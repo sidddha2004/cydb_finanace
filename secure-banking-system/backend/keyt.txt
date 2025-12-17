@@ -1,0 +1,5 @@
+cyborg_4252f3ea26384623b2d77d3804550cf0
+
+pip install cyborgdb
+export CYBORGDB_API_KEY="cyborg_4252f3ea26384623b2d77d3804550cf0"
+export CYBORGDB_CONNECTION_STRING=""
