@@ -4,6 +4,12 @@ __pycache__/
 *$py.class
 backend/venv/
 backend/.env
+# Large / sensitive data
+backend/data/*.csv
+backend/data/*.parquet
+backend/data/*.json
+
+
 
 # --- Node/React Frontend ---
 frontend/node_modules/
