@@ -1,181 +1,823 @@
-import { useState, useEffect } from 'react'
-import { ShieldCheck, Activity, Search, Database, Lock, TrendingUp } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import axios from 'axios'
-import { clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+import './App.css';
+import { 
+  ShieldCheckIcon, ServerStackIcon, MagnifyingGlassIcon, 
+  BoltIcon, BanknotesIcon, GlobeAmericasIcon, ArrowPathIcon, TrashIcon, 
+  BeakerIcon, ExclamationTriangleIcon, SignalIcon, ChartBarIcon,
+  ClockIcon, FireIcon , CheckCircleIcon , SparklesIcon
+} from '@heroicons/react/24/outline';
 
-function cn(...inputs) { return twMerge(clsx(inputs)) }
 
-function App() {
-  const [logs, setLogs] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [chartData, setChartData] = useState([]) // Stores training history
-  const [round, setRound] = useState(0)
 
-  const addLog = (msg, type='info') => {
-    const timestamp = new Date().toLocaleTimeString()
-    setLogs(prev => [`[${timestamp}] ${msg}`, ...prev])
-  }
 
-  // --- Action 1: Start Federated Learning ---
-  const triggerTraining = async () => {
-    setLoading(true)
-    addLog(`Starting Federated Round ${round + 1}...`, "info")
+export default function App() {
+  const [currentUser, setCurrentUser] = useState('admin'); 
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [selectedBank, setSelectedBank] = useState('Bank A');
+  const [isFraud, setIsFraud] = useState(0);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [bankFilter, setBankFilter] = useState('All');
+  const [minAmount, setMinAmount] = useState(0);
+  const [results, setResults] = useState([]);
+  
+  const [systemStatus, setSystemStatus] = useState('System Online');
+  const [lastAction, setLastAction] = useState(null);
+  const [flStats, setFlStats] = useState({ accuracy: 0.82, version: 'v1.0' });
+  // Add state for RAG
+  const [ragReport, setRagReport] = useState(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  // ADD BELOW existing RAG state
+  const [quickAssessment, setQuickAssessment] = useState(null);
+  const [isCheckingThreat, setIsCheckingThreat] = useState(false);
+
+
+  // NEW: Real-time streaming stats
+  const [streamingStats, setStreamingStats] = useState({
+    recent_transactions: 0,
+    legitimate: 0,
+    threats: 0,
+    by_bank: { 'Bank A': 0, 'Bank B': 0, 'Bank C': 0 }
+  });
+  const [isStreaming, setIsStreaming] = useState(false);
+  
+  // Broadcast state
+  const [broadcastBank, setBroadcastBank] = useState('Bank A');
+  const [broadcastPattern, setBroadcastPattern] = useState('');
+  const [broadcastResult, setBroadcastResult] = useState(null);
+
+  // WebSocket ref
+  const ws = useRef(null);
+
+  // Auto-search on role switch
+  useEffect(() => {
+    setResults([]);
+    setSearchQuery(''); 
+    setLastAction(null);
+    setBroadcastResult(null);
+
+    const defaultQuery = '';
     
-    try {
-      // 1. Trigger Backend
-      const res = await axios.post('http://127.0.0.1:8000/train-local')
-      addLog(`Training Started: ${res.data.message}`, "success")
-      
-      // 2. Simulate "Listening" for completion (In real app, use WebSockets)
-      // Here we fake the delay to show the "Training" effect
-      setTimeout(() => {
-        const newAccuracy = (0.85 + Math.random() * 0.14).toFixed(4) // Simulated result from backend
-        setChartData(prev => [...prev, { round: `Rd ${round + 1}`, accuracy: newAccuracy }])
-        setRound(r => r + 1)
-        addLog(`Round Complete. New Global Model Accuracy: ${(newAccuracy * 100).toFixed(2)}%`, "success")
-        setLoading(false)
-      }, 5000)
-
-    } catch (error) {
-      addLog("Error: Backend Unreachable", "error")
-      setLoading(false)
-    }
-  }
-
-  // --- Action 2: Secure Ingestion ---
-  const ingestTransaction = async () => {
-    addLog("Encrypting High-Risk Transaction...", "info")
-    // This vector mimics a "Cash Out" pattern from PaySim
-    const fraudPattern = {
-      id: "txn_" + Math.floor(Math.random() * 100000),
-      features: [1.0, 0.9, 0.1, 0.0] // Normalized features
-    }
-    
-    try {
-      const res = await axios.post('http://127.0.0.1:8000/secure-ingest', fraudPattern)
-      addLog(`Ingested ${res.data.id} into Vault.`, "success")
-    } catch (error) {
-      addLog("Ingestion Failed", "error")
-    }
-  }
-
-  // --- Action 3: Secure Global Search ---
-  const performSearch = async () => {
-    addLog("Broadcasting Blind Query...", "warning")
-    const query = { features: [1.0, 0.9, 0.1] } // Searching for that same pattern
-
-    try {
-      const res = await axios.post('http://127.0.0.1:8000/secure-search', query)
-      if (res.data.match_found) {
-        addLog(`⚠️ MATCH FOUND: Fraud Ring Detected! (Score: 0.98)`, "error")
-      } else {
-        addLog("No matches found in global network.", "success")
+    const fetchDefaultData = async () => {
+      try {
+        setSystemStatus('Loading View...');
+        const response = await axios.post('http://127.0.0.1:8000/secure-search', {
+          query: defaultQuery, 
+          bank_filter: bankFilter,
+          min_amount: 0,
+          user_id: currentUser
+        });
+        setResults(response.data.results);
+        setSystemStatus('Ready');
+      } catch (error) {
+        console.error("Auto-load failed", error);
       }
-    } catch (error) {
-      addLog("Search Failed", "error")
+    };
+
+    fetchDefaultData();
+  }, [currentUser]); 
+
+  // WebSocket connection for real-time updates
+  useEffect(() => {
+    // Connect to WebSocket
+    ws.current = new WebSocket('ws://127.0.0.1:8000/ws');
+    
+    ws.current.onopen = () => {
+      console.log('WebSocket connected');
+      setIsStreaming(true);
+    };
+    
+    ws.current.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      
+      if (message.type === 'stats_update') {
+        setStreamingStats(message.data);
+      }
+    };
+    
+    ws.current.onerror = () => {
+      setIsStreaming(false);
+    };
+    
+    ws.current.onclose = () => {
+      setIsStreaming(false);
+    };
+    
+    // Cleanup
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, []);
+  /*
+  // Auto-refresh search results every 10 seconds when streaming
+  useEffect(() => {
+    if (!isStreaming) return;
+    
+    const interval = setInterval(() => {
+      handleSearch(true); // Silent refresh
+    }, 10000); // Slower refresh: every 10 seconds
+    
+    return () => clearInterval(interval);
+  }, [isStreaming, searchQuery, bankFilter, minAmount, currentUser]);
+  */
+  // Actions
+  const handleIngest = async () => {
+    setQuickAssessment(null);
+    if(!description || !amount) return;
+    try {
+      setSystemStatus('Encrypting & Ingesting...');
+      
+      const bank = currentUser === 'Alice' ? 'Bank A' : 
+                   currentUser === 'Bob' ? 'Bank B' : 
+                   currentUser === 'Charlie' ? 'Bank C' : 
+                   selectedBank;
+      
+      await axios.post('http://127.0.0.1:8000/secure-ingest', {
+        description: description,
+        amount: parseFloat(amount),
+        bank: bank,
+        user_id: currentUser,
+        is_fraud: currentUser === 'admin' ? isFraud : 0
+      });
+      
+      setSystemStatus('Ready');
+      
+      if (currentUser === 'admin' && isFraud === 1) {
+        setLastAction('🚨 Fraud Pattern Injected');
+      } else if (currentUser === 'admin') {
+        setLastAction('⚠️  Test Data Injected');
+      } else {
+        setLastAction('✅ Transfer Complete');
+      }
+      
+      setDescription('');
+      setAmount('');
+      
+      handleSearch(); 
+    } catch (error) { 
+      setSystemStatus('Error'); 
+      console.error(error);
     }
-  }
+  };
+   
+  const handleGenerateReport = async () => {
+  try {
+    setIsGeneratingReport(true);
+    setSystemStatus('Generating AI Analysis...');
+    
+    const response = await axios.post('http://127.0.0.1:8000/rag-analysis', {
+        query: searchQuery || 'fraud patterns',
+        bank_filter: bankFilter,
+        min_amount: parseFloat(minAmount),
+        user_id: currentUser
+      });
+      
+      setRagReport(response.data.report);
+      setSystemStatus('Ready');
+    } catch (error) {
+      setSystemStatus('Error');
+      console.error(error);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+  const handleQuickThreatCheck = async () => {
+    if (!description || !amount) return;
 
-  return (
-    <div className="min-h-screen bg-slate-50 p-8 font-sans text-slate-900">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">CyborgDB <span className="text-blue-600">Consortium</span></h1>
-          <p className="text-slate-500">Node A • PaySim Financial Data • Secure Enclave</p>
-        </div>
-        <div className="flex items-center gap-2 bg-emerald-100 text-emerald-800 px-4 py-2 rounded-full font-medium border border-emerald-200">
-          <ShieldCheck size={18} />
-          <span>System Secure</span>
-        </div>
-      </header>
+    try {
+      setIsCheckingThreat(true);
+      setSystemStatus('Analyzing Transaction Risk...');
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left Column: Controls & Charts */}
-        <div className="lg:col-span-2 space-y-6">
+      const response = await axios.post(
+        'http://127.0.0.1:8000/quick-threat-check',
+        {
+          description: description,
+          amount: parseFloat(amount),
+          bank: selectedBank
+        }
+      );
+
+      setQuickAssessment(response.data.assessment);
+      setSystemStatus('Ready');
+
+    } catch (error) {
+      setSystemStatus('Error');
+      console.error(error);
+    } finally {
+      setIsCheckingThreat(false);
+    }
+  };
+
+
+
+  const handleDelete = async (id) => {
+    try {
+      await axios.delete(`http://127.0.0.1:8000/secure-delete/${id}`);
+      setResults(results.filter(r => r.id !== id));
+    } catch (error) { console.error(error); }
+  };
+
+  const handleSearch = async (silent = false) => {
+    try {
+      if (!silent) setSystemStatus('Scanning...');
+      const response = await axios.post('http://127.0.0.1:8000/secure-search', {
+        query: searchQuery,
+        bank_filter: bankFilter,
+        min_amount: parseFloat(minAmount),
+        user_id: currentUser
+      });
+      setResults(response.data.results);
+      if (!silent) setSystemStatus('Ready');
+    } catch (error) { 
+      if (!silent) setSystemStatus('Error'); 
+      console.error(error);
+    }
+  };
+
+  const handleBroadcast = async () => {
+    if (!broadcastPattern.trim()) return;
+    
+    try {
+      setSystemStatus('Broadcasting Threat...');
+      setLastAction('📡 Scanning Network...');
+      
+      console.log('Sending broadcast:', {
+        source_bank: broadcastBank,
+        description: broadcastPattern
+      });
+      
+      const response = await axios.post('http://127.0.0.1:8000/secure-broadcast', {
+        source_bank: broadcastBank,
+        description: broadcastPattern
+      }, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('Broadcast response:', response.data);
+      
+      setBroadcastResult(response.data);
+      setSystemStatus('Ready');
+      setLastAction(`🛡️  Protected ${response.data.total_protected} transactions`);
+      
+      setBroadcastPattern('');
+      setTimeout(() => handleSearch(), 1000);
+      
+    } catch (error) {
+      setSystemStatus('Error');
+      console.error('Broadcast error:', error.response?.data || error.message);
+      alert(`Broadcast failed: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
+  const handleIndexTrain = async () => {
+    setSystemStatus('Optimizing...'); 
+    await axios.post('http://127.0.0.1:8000/secure-train'); 
+    setSystemStatus('Ready'); 
+    setLastAction('⚡ Index Optimized');
+  };
+  
+  const handleFederatedRound = async () => {
+    setSystemStatus('Aggregating...'); 
+    const res = await axios.post('http://127.0.0.1:8000/federated-round');
+    setFlStats({ accuracy: res.data.new_accuracy, version: res.data.round_id });
+    setSystemStatus('Ready'); 
+    setLastAction(`🚀 Model Updated to ${res.data.round_id}`);
+  };
+  
+  const getRiskColor = (risk) => {
+    if (risk.includes("LOW") || risk.includes("✅")) return "badge badge-success";
+    if (risk.includes("MEDIUM") || risk.includes("⚠️")) return "badge badge-warning";
+    if (risk.includes("BLOCKED") || risk.includes("🚫")) return "badge badge-danger-pulse";
+    return "badge badge-danger";
+  };
+
+
+return (
+  <div className="app-container">
+    
+    {/* =======================
+        GLASSMORPHISM NAVBAR 
+       ======================= */}
+    <div style={{
+      position: 'sticky',
+      top: 0,
+      zIndex: 50,
+      backdropFilter: 'blur(12px)',
+      backgroundColor: 'rgba(0, 0, 0, 0.3)', // Semi-transparent black based on your var(--color-black)
+      borderBottom: '1px solid var(--color-dark-gray)'
+    }}>
+      <div className="container-max">
+        <div className="header-bar" style={{ padding: '1rem 0' }}>
           
-          {/* Card 1: Federated Learning with Chart */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
-                  <Activity size={24} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold">Federated Accuracy</h2>
-                  <p className="text-sm text-slate-500">Global Model Performance</p>
-                </div>
+          {/* Brand */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="bg-teal" style={{ padding: '0.5rem', borderRadius: '0.5rem' }}>
+              <ShieldCheckIcon style={{ height: '1.5rem', width: '1.5rem', color: 'black' }} />
+            </div>
+            <div>
+              <h1 className="text-primary" style={{ fontSize: '1.25rem', fontWeight: 'bold', lineHeight: 1 }}>
+                Sentinel <span className="text-teal">AI</span>
+              </h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <span className={`status-dot ${systemStatus.includes('Error') ? 'error' : 'online'}`}></span>
+                <span className="text-muted" style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>v2.0 • {systemStatus}</span>
               </div>
-              <button 
-                onClick={triggerTraining}
-                disabled={loading}
-                className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2 rounded-lg font-medium transition disabled:opacity-50 flex items-center gap-2"
+            </div>
+          </div>
+
+          {/* Right Side Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {/* Streaming Indicator */}
+            <div className={`status-indicator ${isStreaming ? 'border-teal' : 'border-primary'}`}>
+              <div className={`status-dot ${isStreaming ? 'online' : 'offline'}`}></div>
+              <span className="text-primary" style={{ fontSize: '0.75rem', fontWeight: 500 }}>
+                {isStreaming ? 'LIVE FEED' : 'OFFLINE'}
+              </span>
+            </div>
+
+            {/* Role Switcher */}
+            <div className={`card-secondary ${currentUser === 'admin' ? 'border-teal' : 'border-primary'}`} 
+                 style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', border: currentUser === 'admin' ? '1px solid var(--color-teal)' : '1px solid var(--color-dark-gray)' }}>
+              <span className={currentUser === 'admin' ? 'text-teal' : 'text-secondary'} style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                {currentUser === 'admin' ? 'Admin Mode' : 'View As'}
+              </span>
+              <select 
+                value={currentUser} 
+                onChange={(e) => setCurrentUser(e.target.value)}
+                className="select-base"
+                style={{ border: 'none', padding: 0, width: 'auto', backgroundColor: 'transparent', cursor: 'pointer' }}
               >
-                {loading ? "Training..." : "Start Round"}
-                {!loading && <TrendingUp size={16} />}
+                <option value="admin">🛡️ Security Admin</option>
+                <option value="Alice">👤 Alice (Bank A)</option>
+                <option value="Bob">👤 Bob (Bank B)</option>
+                <option value="Charlie">👤 Charlie (Bank C)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* =======================
+        MAIN CONTENT 
+       ======================= */}
+    <main className="container-max" style={{ paddingTop: '2rem', paddingBottom: '4rem' }}>
+      
+      {/* Toast Notification */}
+      {lastAction && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
+          <div className="badge-success" style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>
+            {lastAction}
+          </div>
+        </div>
+      )}
+
+      {/* STATS GRID (Admin Only) */}
+      {currentUser === 'admin' && isStreaming && (
+        <div className="stats-grid" style={{ marginBottom: '2rem' }}>
+          <div className="card-secondary" style={{ padding: '1.25rem', borderRadius: '0.75rem', borderLeft: '4px solid #ffffff' }}>
+            <p className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Transactions</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+              <p className="text-primary" style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{streamingStats.recent_transactions}</p>
+              <ChartBarIcon className="text-secondary" style={{ height: '1.5rem', width: '1.5rem' }} />
+            </div>
+          </div>
+          
+          <div className="card-secondary" style={{ padding: '1.25rem', borderRadius: '0.75rem', borderLeft: '4px solid var(--color-teal)' }}>
+            <p className="text-teal" style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Legitimate</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+              <p className="text-teal" style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{streamingStats.legitimate}</p>
+              <ClockIcon className="text-teal" style={{ height: '1.5rem', width: '1.5rem' }} />
+            </div>
+          </div>
+          
+          <div className="card-secondary" style={{ padding: '1.25rem', borderRadius: '0.75rem', borderLeft: '4px solid #dc3545' }}>
+            <p style={{ color: '#dc3545', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Threats</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+              <p style={{ color: '#dc3545', fontSize: '1.5rem', fontWeight: 'bold' }}>{streamingStats.threats}</p>
+              <FireIcon style={{ color: '#dc3545', height: '1.5rem', width: '1.5rem' }} />
+            </div>
+          </div>
+          
+          <div className="card-secondary" style={{ padding: '1rem', borderRadius: '0.75rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {Object.entries(streamingStats.by_bank).map(([bank, count]) => (
+                <div key={bank} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                  <span className="text-secondary">{bank}</span>
+                  <span className="text-primary" style={{ fontFamily: 'monospace' }}>{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CORE LAYOUT GRID */}
+      <div className="grid-responsive">
+        
+        {/* LEFT COLUMN (Actions) - spans 4 cols in CSS */}
+        <div style={{ gridColumn: 'span 4' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            
+            {/* INGESTION PANEL */}
+            <section
+              className={`card-secondary ${currentUser === 'admin' ? 'border-teal' : 'border-primary'}`}
+              style={{
+                padding: '1.5rem',
+                borderRadius: '0.75rem',
+                border: currentUser === 'admin'
+                  ? '1px solid var(--color-teal)'
+                  : '1px solid var(--color-dark-gray)'
+              }}
+            >
+              <h2
+                className="text-primary"
+                style={{
+                  fontSize: '1.125rem',
+                  fontWeight: 'bold',
+                  marginBottom: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                {currentUser === 'admin'
+                  ? <BeakerIcon style={{ height: '1.25rem', width: '1.25rem' }} />
+                  : <BanknotesIcon className="text-teal" style={{ height: '1.25rem', width: '1.25rem' }} />}
+                {currentUser === 'admin' ? 'Fraud Injection' : 'Make Transfer'}
+              </h2>
+
+              {currentUser === 'admin' && (
+                <div
+                  className="admin-warning"
+                  style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}
+                >
+                  <ExclamationTriangleIcon style={{ height: '1rem', width: '1rem', flexShrink: 0 }} />
+                  <p>Inject patterns to test AI detection.</p>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {currentUser === 'admin' && (
+                  <>
+                    <div>
+                      <label className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                        Target DB
+                      </label>
+                      <select
+                        className="select-base"
+                        style={{ marginTop: '0.25rem' }}
+                        value={selectedBank}
+                        onChange={(e) => setSelectedBank(e.target.value)}
+                      >
+                        <option value="Bank A">Bank A</option>
+                        <option value="Bank B">Bank B</option>
+                        <option value="Bank C">Bank C</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                        Pattern Type
+                      </label>
+                      <select
+                        className="select-base"
+                        style={{ marginTop: '0.25rem' }}
+                        value={isFraud}
+                        onChange={(e) => setIsFraud(parseInt(e.target.value))}
+                      >
+                        <option value={0}>✅ Legitimate (Normal)</option>
+                        <option value={1}>🚨 Fraudulent (Threat)</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                <input
+                  className="input-base"
+                  placeholder={currentUser === 'admin' ? "e.g. 'Stolen Card'" : "e.g. 'Coffee Shop'"}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+
+                <input
+                  type="number"
+                  className="input-base"
+                  placeholder="Amount ($)"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+
+                <button
+                  onClick={handleIngest}
+                  className={currentUser === 'admin' ? 'btn-secondary' : 'btn-primary'}
+                  style={{ width: '100%', marginTop: '0.5rem' }}
+                >
+                  {currentUser === 'admin'
+                    ? (isFraud === 1 ? 'Inject Threat' : 'Inject Data')
+                    : 'Send Funds'}
+                </button>
+
+                {/* QUICK THREAT CHECK (NON-ADMIN ONLY) */}
+                {currentUser !== 'admin' && (
+                  <>
+                    <button
+                      onClick={handleQuickThreatCheck}
+                      disabled={isCheckingThreat}
+                      className="btn-secondary"
+                      style={{ width: '100%', marginTop: '0.5rem' }}
+                    >
+                      {isCheckingThreat ? 'Analyzing...' : '⚡ Quick Threat Check'}
+                    </button>
+
+                    {/* QUICK THREAT RESULT — LEFT PANEL ONLY */}
+                    {quickAssessment && (
+                      <div
+                        className="rag-report-card"
+                        style={{
+                          marginTop: '1rem',
+                          borderLeft: '3px solid var(--color-teal)'
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: '0.5rem'
+                          }}
+                        >
+                          <h3 className="text-teal" style={{ fontWeight: 'bold' }}>
+                            ⚡ Quick Threat Assessment
+                          </h3>
+                          <button
+                            onClick={() => setQuickAssessment(null)}
+                            className="text-muted"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div
+                          className="text-secondary"
+                          style={{
+                            fontSize: '0.875rem',
+                            whiteSpace: 'pre-wrap',
+                            lineHeight: '1.6'
+                          }}
+                        >
+                          {quickAssessment}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </section>
+
+
+            {/* ADMIN TOOLS */}
+            {currentUser === 'admin' && (
+              <>
+                <section className="broadcast-panel">
+                  <div style={{ position: 'absolute', top: 0, right: 0, padding: '0.5rem', opacity: 0.1 }}>
+                    <SignalIcon className="text-teal" style={{ height: '6rem', width: '6rem' }} />
+                  </div>
+                  <h2 className="text-teal" style={{ fontSize: '1.125rem', fontWeight: 'bold', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <SignalIcon style={{ height: '1.25rem', width: '1.25rem' }} /> Threat Broadcast
+                  </h2>
+                  <p className="text-secondary" style={{ fontSize: '0.75rem', marginBottom: '1rem' }}>Share detected threats with the federation.</p>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', position: 'relative', zIndex: 10 }}>
+                    <input className="input-base" placeholder="Threat Signature..." value={broadcastPattern} onChange={(e) => setBroadcastPattern(e.target.value)} />
+                    <button onClick={handleBroadcast} className="btn-primary" style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
+                      Broadcast <SignalIcon style={{ height: '1rem', width: '1rem' }} />
+                    </button>
+                  </div>
+                </section>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                   <div className="card-secondary" style={{ padding: '1rem', borderRadius: '0.75rem', border: '1px solid var(--color-dark-gray)' }}>
+                      <GlobeAmericasIcon className="text-teal" style={{ height: '1.5rem', width: '1.5rem', marginBottom: '0.5rem' }} />
+                      <div className="text-primary" style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>Federated Sync</div>
+                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>Acc: {(flStats.accuracy * 100).toFixed(1)}%</div>
+                      <button onClick={handleFederatedRound} className="btn-secondary" style={{ width: '100%', marginTop: '0.5rem', fontSize: '0.75rem', padding: '0.5rem' }}>Sync</button>
+                   </div>
+                   <div className="card-secondary" style={{ padding: '1rem', borderRadius: '0.75rem', border: '1px solid var(--color-dark-gray)' }}>
+                      <ServerStackIcon className="text-secondary" style={{ height: '1.5rem', width: '1.5rem', marginBottom: '0.5rem' }} />
+                      <div className="text-primary" style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>Re-Index DB</div>
+                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>Optimize Vectors</div>
+                      <button onClick={handleIndexTrain} className="btn-secondary" style={{ width: '100%', marginTop: '0.5rem', fontSize: '0.75rem', padding: '0.5rem' }}>Optimize</button>
+                   </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN (Data View) - spans 8 cols in CSS */}
+        <div style={{ gridColumn: 'span 8' }}>
+          <section className="card-secondary" style={{ padding: '1.5rem', borderRadius: '0.75rem', minHeight: '600px', border: '1px solid var(--color-dark-gray)' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 className="text-primary" style={{ fontSize: '1.25rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <MagnifyingGlassIcon className="text-teal" style={{ height: '1.5rem', width: '1.5rem' }} />
+                {currentUser === 'admin' ? 'Global Fraud Monitoring' : 'Recent Activity'}
+              </h2>
+              <button 
+                onClick={handleGenerateReport} 
+                disabled={isGeneratingReport}
+                className="btn-secondary"
+                style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: isGeneratingReport ? 0.7 : 1 }}
+              >
+                {isGeneratingReport ? <ArrowPathIcon style={{ height: '1rem', width: '1rem', animation: 'spin 1s linear infinite' }} /> : '🤖 AI Analysis'}
               </button>
             </div>
 
-            {/* The Chart */}
-            <div className="h-64 w-full bg-slate-50 rounded-lg border border-slate-100 p-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="round" stroke="#94a3b8" />
-                  <YAxis domain={[0.8, 1.0]} stroke="#94a3b8" />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="accuracy" stroke="#2563eb" strokeWidth={3} dot={{r: 4}} />
-                </LineChart>
-              </ResponsiveContainer>
-              {chartData.length === 0 && (
-                <div className="text-center text-slate-400 mt-[-100px]">No training data yet. Start a round.</div>
-              )}
+            {/* Search */}
+            <div className="search-bar">
+              <input type="text" className="search-input" 
+                placeholder={currentUser === 'admin' ? "Search for anomalies..." : "Search history..."} 
+                value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}/>
+              <button onClick={() => handleSearch(false)} className="btn-primary">
+                Search
+              </button>
             </div>
-          </div>
 
-          {/* Card 2: CyborgDB Operations */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-             {/* ... (Same as before, keep the buttons) ... */}
-             <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-purple-100 rounded-lg text-purple-600">
-                  <Database size={24} />
+            {/* Admin Filters */}
+            {currentUser === 'admin' && (
+              <div className="filter-row">
+                <div>
+                  <label className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Bank Filter</label>
+                  <select className="select-base" style={{ marginTop: '0.25rem' }} value={bankFilter} onChange={(e) => setBankFilter(e.target.value)}>
+                    <option value="All">All Banks</option>
+                    <option value="Bank A">Bank A</option>
+                    <option value="Bank B">Bank B</option>
+                    <option value="Bank C">Bank C</option>
+                  </select>
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">CyborgDB Operations</h2>
-                  <p className="text-sm text-slate-500">Homomorphic Encryption Vault</p>
+                  <label className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Min Amount: ${minAmount}</label>
+                  <input type="range" min="0" max="10000" step="100" style={{ width: '100%', marginTop: '0.75rem', accentColor: 'var(--color-teal)' }}
+                    value={minAmount} onChange={(e) => setMinAmount(e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={ingestTransaction} className="border border-slate-300 hover:bg-slate-50 py-3 rounded-lg font-medium">
-                  Encrypt & Ingest
-                </button>
-                <button onClick={performSearch} className="bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-medium">
-                  Global Search
-                </button>
+            )}
+
+            {/* RAG Report */}
+            {ragReport && (
+              <div className="rag-report-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <h3 className="text-teal" style={{ fontWeight: 'bold' }}>🤖 AI Intelligence Report</h3>
+                  <button onClick={() => setRagReport(null)} className="text-muted" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                </div>
+                <div className="text-secondary" style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                  {ragReport.analysis}
+                </div>
               </div>
-          </div>
+            )}
+
+
+            {/* Results List */}
+            <div className="results-container" style={{ marginTop: '1rem' }}>
+              {results.length === 0 ? (
+                <div className="empty-state">
+                  <MagnifyingGlassIcon className="text-muted" style={{ height: '3rem', width: '3rem', margin: '0 auto 1rem auto' }} />
+                  <p>No transactions found matching your criteria.</p>
+                </div>
+              ) : (
+                results.map((res) => (
+                  <div key={res.id} className="transaction-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      
+                      {/* Left: Info */}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                          {currentUser === 'admin' && (
+                            <span className={
+                              res.risk_level === 'High' ? 'badge badge-danger' : 
+                              res.risk_level === 'Medium' ? 'badge badge-warning' : 'badge badge-success'
+                            }>
+                              {res.risk_level}
+                            </span>
+                          )}
+                          <span className="badge" style={{ border: '1px solid #444', color: '#888' }}>{res.metadata.bank}</span>
+                        </div>
+                        <h4 className="text-primary" style={{ fontWeight: 500 }}>{res.metadata.description}</h4>
+                      </div>
+
+                      {/* Right: Amount & Action */}
+                      <div style={{ textAlign: 'right' }}>
+                        <div className="text-teal" style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '1.125rem' }}>
+                          ${res.metadata.amount}
+                        </div>
+                        {currentUser === 'admin' && (
+                          <button onClick={() => handleDelete(res.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', marginTop: '0.5rem', opacity: 0.5 }} title="Delete">
+                            <TrashIcon style={{ height: '1rem', width: '1rem', color: '#fff' }} />
+                          </button>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+          </section>
         </div>
 
-        {/* Right Column: Console Logs */}
-        <div className="bg-slate-900 text-slate-200 p-6 rounded-xl shadow-lg h-[600px] overflow-hidden flex flex-col">
-          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-700 pb-2">
-            System Events
-          </h3>
-          <div className="flex-1 overflow-y-auto font-mono text-xs space-y-2">
-            {logs.length === 0 && <span className="text-slate-600 italic">System ready. Waiting for commands...</span>}
-            {logs.map((log, i) => (
-              <div key={i} className="break-words border-l-2 border-slate-700 pl-2">
-                {log}
-              </div>
-            ))}
+      </div>
+    </main>
+
+    {/* =======================
+        PROFESSIONAL FOOTER
+       ======================= */}
+    <footer style={{ 
+      borderTop: '1px solid var(--color-dark-gray)', 
+      backgroundColor: 'var(--color-black)', 
+      paddingTop: '3rem', 
+      paddingBottom: '3rem',
+      marginTop: 'auto' 
+    }}>
+      <div className="container-max">
+        
+        {/* Top Section: Grid Layout */}
+        <div className="grid-responsive" style={{ 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+          gap: '2rem', 
+          marginBottom: '3rem' 
+        }}>
+          
+          {/* Column 1: Brand & Mission */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+              <ShieldCheckIcon className="text-teal" style={{ height: '1.5rem', width: '1.5rem' }} />
+              <span className="text-primary" style={{ fontWeight: 'bold', fontSize: '1.25rem' }}>Sentinel AI</span>
+            </div>
+            <p className="text-muted" style={{ fontSize: '0.875rem', lineHeight: '1.6', maxWidth: '300px' }}>
+              Securing the global financial federation through decentralized intelligence and real-time fraud detection.
+            </p>
+          </div>
+
+          {/* Column 2: Platform Links */}
+          <div>
+            <h4 className="text-primary" style={{ fontWeight: 'bold', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
+              Platform
+            </h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <li><a href="#" className="text-secondary" style={{ textDecoration: 'none', fontSize: '0.875rem', transition: 'color 0.2s' }}>System Status</a></li>
+              <li><a href="#" className="text-secondary" style={{ textDecoration: 'none', fontSize: '0.875rem', transition: 'color 0.2s' }}>Developer API</a></li>
+              <li><a href="#" className="text-secondary" style={{ textDecoration: 'none', fontSize: '0.875rem', transition: 'color 0.2s' }}>Security Protocol</a></li>
+            </ul>
+          </div>
+
+          {/* Column 3: Legal & Support */}
+          <div>
+            <h4 className="text-primary" style={{ fontWeight: 'bold', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
+              Compliance
+            </h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <li><a href="#" className="text-secondary" style={{ textDecoration: 'none', fontSize: '0.875rem', transition: 'color 0.2s' }}>Privacy Policy</a></li>
+              <li><a href="#" className="text-secondary" style={{ textDecoration: 'none', fontSize: '0.875rem', transition: 'color 0.2s' }}>Terms of Service</a></li>
+              <li><a href="#" className="text-secondary" style={{ textDecoration: 'none', fontSize: '0.875rem', transition: 'color 0.2s' }}>GDPR & Compliance</a></li>
+            </ul>
+          </div>
+
+        </div>
+
+        {/* Bottom Section: Copyright & Badges */}
+        <div style={{ 
+          borderTop: '1px solid var(--color-dark-gray)', 
+          paddingTop: '1.5rem', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}>
+          <p className="text-muted" style={{ fontSize: '0.75rem' }}>
+            © 2024 Sentinel AI Security. All rights reserved.
+          </p>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.7 }}>
+              <div style={{ width: '8px', height: '8px', backgroundColor: 'var(--color-teal)', borderRadius: '50%' }}></div>
+              <span className="text-muted" style={{ fontSize: '0.75rem', fontWeight: 500 }}>All Systems Operational</span>
+            </div>
+            <span className="text-muted" style={{ fontSize: '0.75rem' }}>v2.0.4</span>
           </div>
         </div>
 
       </div>
-    </div>
-  )
+    </footer>
+  </div>
+);
 }
-
-export default App

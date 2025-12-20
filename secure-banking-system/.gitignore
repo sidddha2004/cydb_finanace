@@ -1,27 +1,55 @@
-# --- Python Backend ---
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Python Backend
+# =========================
 __pycache__/
 *.py[cod]
 *$py.class
+
 backend/venv/
 backend/.env
+
 # Large / sensitive data
 backend/data/*.csv
 backend/data/*.parquet
 backend/data/*.json
 
-
-
-# --- Node/React Frontend ---
+# =========================
+# Node / React Frontend
+# =========================
 frontend/node_modules/
 frontend/dist/
 frontend/.env
-frontend/.DS_Store
 frontend/coverage/
 
-# --- System & logs ---
-.DS_Store
-*.log
+# =========================
+# Docker
+# =========================
+docker-data/
+**/docker-data/
+*.pid
 
-# --- IDEs ---
+# =========================
+# Kafka / Redis (if volumes added later)
+# =========================
+kafka-data/
+redis-data/
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# OS / IDE
+# =========================
+.DS_Store
 .vscode/
 .idea/
