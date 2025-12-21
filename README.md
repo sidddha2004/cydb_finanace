@@ -68,7 +68,7 @@ pip install -r requirements.txt
 Create a .env file inside backend/:
 
 CYDB_URL=http://127.0.0.1:8001
-CYDB_API_KEY=cyborg_4252f3ea26384623b2d77d3804550cf0
+CYDB_API_KEY=key
 GOOGLE_API_KEY=your_google_gemini_api_key
 KAFKA_BOOTSTRAP=localhost:9092
 
