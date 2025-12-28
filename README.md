@@ -1,206 +1,198 @@
-Sentinel AI – Project Setup & Run Guide
+# Sentinel AI – Project Setup & Run Guide
 
-This guide explains how to run Sentinel AI locally using your original (non-containerized backend) while using Docker only for infrastructure services (Kafka, Redis, CyborgDB).
+This guide explains how to run **Sentinel AI** locally using a **non-containerized backend** while using **Docker only for infrastructure services**.
 
+---
 
-✅ Prerequisites
+## Prerequisites
 
-Make sure you have installed:
+Ensure the following are installed:
 
-Python 3.10+
+* Python 3.10+
+* Node.js 18+
+* Docker & Docker Compose
+* Git
 
-Node.js 18+
+---
 
-Docker & Docker Compose
+## 1. Clone the Repository
 
-Git
-
-🚀 Step-by-Step Setup
-1️⃣ Clone the Repository
-git clone https://github.com/<your-username>/sentinel-ai.git
+```bash
+git clone https://github.com/<your-org>/sentinel-ai.git
 cd sentinel-ai
+```
 
-2️⃣ Start Infrastructure Services (Docker)
+---
 
-This starts:
+## 2. Start Infrastructure Services (Docker)
 
-Kafka
+This starts Kafka, Zookeeper, Redis, CyborgDB, and Kafka UI.
 
-Zookeeper
-
-Redis
-
-CyborgDB
-
-Kafka UI
-
+```bash
 docker-compose up -d
+```
 
+Verify services:
 
-Verify:
+* Kafka UI: [http://localhost:8080](http://localhost:8080)
+* CyborgDB: [http://localhost:8001](http://localhost:8001)
 
-Kafka UI → http://localhost:8080
+---
 
-CyborgDB → http://localhost:8001
+## 3. Backend Setup (Local Python)
 
-3️⃣ Backend Setup (Local Python)
-Create Virtual Environment
+```bash
 cd backend
 python -m venv venv
+```
 
+Activate virtual environment:
 
-Activate it:
+**Windows**
 
-Windows
-
+```bash
 venv\Scripts\activate
+```
 
+**Mac/Linux**
 
-Mac/Linux
-
+```bash
 source venv/bin/activate
+```
 
-Install Dependencies
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
+```
 
-4️⃣ Environment Variables
+---
 
-Create a .env file inside backend/:
+## 4. Environment Variables
 
+Create a `.env` file inside `backend/`:
+
+```env
 CYDB_URL=http://127.0.0.1:8001
 CYDB_API_KEY=key
 GOOGLE_API_KEY=your_google_gemini_api_key
 KAFKA_BOOTSTRAP=localhost:9092
+```
 
+> Do not commit `.env` to GitHub.
 
-⚠️ Do NOT commit .env to GitHub
+---
 
-5️⃣ Initialize Dataset & Indexes
+## 5. Initialize Dataset & Indexes
 
-This step:
-
-Loads PaySim data
-
-Enriches transactions
-
-Splits data for Kafka & Federated Learning
-
-Loads initial data into CyborgDB
-
+```bash
 python data_loader.py
+```
 
+This initializes CyborgDB indexes and prepares streaming + federated datasets.
 
-You should see:
+---
 
-secure_history index created
+## 6. Start Backend API
 
-known_threats index created
-
-Bank A / B / C data loaded
-
-6️⃣ Start Backend API
+```bash
 uvicorn main:app --reload
-
+```
 
 Backend runs at:
 
-http://localhost:8000
+* [http://localhost:8000](http://localhost:8000)
 
-7️⃣ Start Real-Time Streaming
+---
 
-Open two new terminals (backend venv active).
+## 7. Start Real-Time Streaming (Kafka)
 
-Terminal 1 – Kafka Consumer
+Open two terminals (backend venv active).
+
+**Terminal 1 – Consumer**
+
+```bash
 python streaming_consumer.py
+```
 
-Terminal 2 – Kafka Producer
+**Terminal 2 – Producer**
+
+```bash
 python streaming_producer.py
+```
 
+---
 
-You should see live transactions flowing.
+## 8. (Optional) Start Federated Learning Simulator
 
-8️⃣ (Optional) Start Federated Learning Simulator
+```bash
 python fl_trainer.py
+```
 
+---
 
-Simulates federated learning rounds every few minutes.
+## 9. Frontend Setup
 
-9️⃣ Frontend Setup
+```bash
 cd frontend
 npm install
 npm run dev
-
+```
 
 Frontend runs at:
 
-http://localhost:5173
+* [http://localhost:5173](http://localhost:5173)
 
-🔍 What to Test
-User Dashboard
+---
 
-Submit legitimate transaction → LOW RISK
+## 10. Basic Testing
 
-Submit fraud transaction → BLOCKED
+* Submit transaction → risk assessment shown
+* Search transactions
+* Run AI analysis
+* Admin actions: broadcast, federated round, optimize indexes
 
-Search transactions
+---
 
-Run AI analysis (RAG)
+## 11. Stopping the Application
 
-Admin Panel (Demo Only)
+Stop infrastructure services:
 
-Inject fraud
-
-Trigger federated round
-
-Broadcast threat
-
-Optimize DB indexes
-
-Observe Kafka live stats
-
-⚠️ Important Notes
-
-Admin panel exists only for demo
-
-In real banking systems:
-
-Federated learning is automatic
-
-Threat broadcast is system-triggered
-
-No human admin manually injects fraud
-
-🧯 Troubleshooting
-CyborgDB Connection Error
-
-Make sure this is running:
-
-docker ps
-
-
-Check:
-
-sentinel-cyborgdb → port 8001
-
-Kafka Not Receiving Messages
-
-Ensure Kafka container is healthy
-
-Check Kafka UI at localhost:8080
-
-📦 Stopping Everything
+```bash
 docker-compose down
+```
 
-🏁 Summary
+---
 
-This setup runs Sentinel AI exactly like a real-world system:
+## 12. Cleaning / Resetting the Database (Optional)
 
-Local backend
+Use this when you want a **fresh start** (clean CyborgDB, Kafka topics, Redis state).
 
-Dockerized infrastructure
+### Full infrastructure + data reset (recommended)
 
-Real-time Kafka streaming
+```bash
+docker-compose down -v
+```
 
-Federated learning simulation
+This will:
 
-AI-powered fraud analysis
+* Stop all containers
+* Remove **volumes** (CyborgDB indexes, Kafka data, Redis cache)
+* Force a clean database state on next startup
+
+After this, restart services and reinitialize data:
+
+```bash
+docker-compose up -d
+python data_loader.py
+```
+
+### Backend-only reset (no Docker reset)
+
+If you only want to clear indexes:
+
+```bash
+python data_loader.py
+```
+
+(This recreates indexes and reloads initial data.)
