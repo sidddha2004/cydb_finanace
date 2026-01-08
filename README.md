@@ -1,4 +1,4 @@
-# 🚨 Sentinel AI
+#  Sentinel AI
 
 **Federated Fraud Detection & Intelligence Platform**
 
@@ -6,22 +6,22 @@ Sentinel AI is a privacy-preserving, federated learning-based fraud detection sy
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
-- 🔐 **Federated Learning** – Banks share intelligence, not raw data
-- 🧠 **AI-Native Vector Search** using CyborgDB
-- ⚡ **Real-Time Fraud Detection** via Kafka streaming
-- 📡 **Threat Broadcasting** across banks
-- 🤖 **Explainable AI (RAG)** using Gemini
-- 📊 **Live Dashboards** with WebSockets
-- 🧩 **Dual-Index Architecture**
+-  **Federated Learning** – Banks share intelligence, not raw data
+-  **AI-Native Vector Search** using CyborgDB
+-  **Real-Time Fraud Detection** via Kafka streaming
+-  **Threat Broadcasting** across banks
+-  **Explainable AI (RAG)** using Gemini
+-  **Live Dashboards** with WebSockets
+-  **Dual-Index Architecture**
   - `secure_history` (legitimate patterns)
   - `known_threats` (fraud patterns)
-- 🧑‍💼 **Role-Based Access Control** (Admin / Bank Users)
+-  **Role-Based Access Control** (Admin / Bank Users)
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 ```
 Banks (A, B, C)
@@ -40,7 +40,7 @@ Sentinel AI Central Aggregator
 
 ---
 
-## 🧰 Tech Stack
+##  Tech Stack
 
 ### Frontend
 - React.js
@@ -76,7 +76,7 @@ Sentinel AI Central Aggregator
 
 ---
 
-## 📊 Dataset Information
+##  Dataset Information
 
 ### Supported Dataset (Recommended)
 
@@ -86,7 +86,7 @@ Sentinel AI Central Aggregator
 - **Format:** CSV
 - **Use case:** Simulated mobile money transactions with fraud labels
 
-### 📥 Dataset Setup (Option 1 – Manual)
+###  Dataset Setup (Option 1 – Manual)
 
 1. Download the dataset from Kaggle
 2. Extract and place the CSV here: `backend/data/transactions.csv`
@@ -98,7 +98,7 @@ Sentinel AI Central Aggregator
 - `nameDest`, `oldbalanceDest`, `newbalanceDest`
 - `isFraud`, `isFlaggedFraud`
 
-### ⚙️ Dataset Setup (Option 2 – Automatic)
+###  Dataset Setup (Option 2 – Automatic)
 
 If no dataset is found, Sentinel AI will automatically generate a synthetic dataset when you run:
 
@@ -112,7 +112,7 @@ python data_loader.py
 
 ---
 
-## ⚙️ Project Setup & Run Guide
+##  Project Setup & Run Guide
 
 ### Prerequisites
 
@@ -123,7 +123,7 @@ python data_loader.py
 
 ---
 
-### 1️⃣ Clone the Repository
+### 1️ Clone the Repository
 
 ```bash
 git clone https://github.com/<your-org>/sentinel-ai.git
@@ -132,7 +132,7 @@ cd sentinel-ai
 
 ---
 
-### 2️⃣ Start Infrastructure Services (Docker)
+### 2️ Start Infrastructure Services (Docker)
 
 Starts Kafka, Zookeeper, Redis, CyborgDB, Kafka UI.
 
@@ -146,7 +146,7 @@ docker-compose up -d
 
 ---
 
-### 3️⃣ Backend Setup (Local Python)
+### 3️ Backend Setup (Local Python)
 
 ```bash
 cd backend
@@ -173,7 +173,7 @@ pip install -r requirements.txt
 
 ---
 
-### 4️⃣ Environment Variables
+### 4️ Environment Variables
 
 Create `backend/.env`:
 
@@ -185,11 +185,11 @@ KAFKA_BOOTSTRAP=localhost:9092
 REDIS_URL=redis://localhost:6379
 ```
 
-⚠️ **Do not commit `.env` to GitHub**
+ **Do not commit `.env` to GitHub**
 
 ---
 
-### 5️⃣ Initialize Dataset & Indexes
+### 5️ Initialize Dataset & Indexes
 
 ```bash
 python data_loader.py
@@ -202,7 +202,7 @@ This will:
 
 ---
 
-### 6️⃣ Start Backend API
+### 6️ Start Backend API
 
 ```bash
 uvicorn main:app --reload
@@ -212,7 +212,7 @@ uvicorn main:app --reload
 
 ---
 
-### 7️⃣ Start Real-Time Streaming
+### 7️ Start Real-Time Streaming
 
 Open two terminals (backend venv active).
 
@@ -228,7 +228,7 @@ python streaming_producer.py
 
 ---
 
-### 8️⃣ (Optional) Federated Learning Simulator
+### 8️ (Optional) Federated Learning Simulator
 
 ```bash
 python fl_trainer.py
@@ -236,7 +236,7 @@ python fl_trainer.py
 
 ---
 
-### 9️⃣ Frontend Setup
+### 9️ Frontend Setup
 
 ```bash
 cd frontend
@@ -248,7 +248,7 @@ npm run dev
 
 ---
 
-## 🧪 Basic Testing Checklist
+##  Basic Testing Checklist
 
 - [ ] Submit transaction → risk shown
 - [ ] Search transactions
@@ -260,7 +260,7 @@ npm run dev
 
 ---
 
-## 🛑 Stopping the Application
+##  Stopping the Application
 
 ```bash
 docker-compose down
@@ -268,7 +268,7 @@ docker-compose down
 
 ---
 
-## ♻️ Reset / Clean Start (IMPORTANT)
+##  Reset / Clean Start (IMPORTANT)
 
 ### Full Reset (Recommended)
 
@@ -285,11 +285,11 @@ This clears:
 
 ---
 
-## 📝 License
+##  License
 
 MIT
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
